@@ -14,8 +14,11 @@ router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
 
 class ChatRequest(BaseModel):
-    question: str
-    session_id: str = "default"
+    question: Optional[str] = None
+    message: Optional[str] = None
+    session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    mode: str = "auto"  # "auto" | "general" | "cucm"
     execution_preference: str = "auto"  # "auto" | "tool_only"
 
 
@@ -71,7 +74,14 @@ def configure_assistant_provider(req: ConfigureProviderRequest) -> Dict[str, Any
 @router.post("/chat", response_model=ChatMessage)
 def assistant_chat(req: ChatRequest) -> ChatMessage:
     agent = CUCMAssistantAgent()
-    return agent.ask(req.question, session_id=req.session_id, execution_preference=req.execution_preference)
+    text = (req.message or req.question or "").strip()
+    sid = req.conversation_id or req.session_id or "default"
+    return agent.ask(
+        text,
+        session_id=sid,
+        execution_preference=req.execution_preference,
+        mode=req.mode,
+    )
 
 
 @router.get("/tools", response_model=List[ToolSpec])

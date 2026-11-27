@@ -53,7 +53,7 @@ class AppSettings(BaseSettings):
     llm_timeout: int = Field(default=60, alias="LLM_TIMEOUT")
     llm_max_retries: int = Field(default=2, alias="LLM_MAX_RETRIES")
     ollama_base_url: str = Field(default="http://10.106.44.12:11434", alias="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="llama3", alias="OLLAMA_MODEL")
+    ollama_model: str = Field(default="llama3.2:3b", alias="OLLAMA_MODEL")
     gemini_api_key: Optional[SecretStr] = Field(default=None, alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL")
     openrouter_api_key: Optional[SecretStr] = Field(default=None, alias="OPENROUTER_API_KEY")

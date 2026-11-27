@@ -1,4 +1,4 @@
-"""Grounded natural-language and tabular response formatter with LLM provenance."""
+"""Grounded natural-language, General AI, Hybrid, and tabular response formatter."""
 
 import json
 import time
@@ -9,10 +9,95 @@ from backend.ai.provider_manager import categorize_llm_error, get_llm_provider_m
 
 
 class ResponseFormatter:
-    """Formats actual AXL/RISPort70 tool results into natural language + structured tables."""
+    """Formats General AI, CUCM Operations, and Hybrid responses with full provenance."""
 
     def __init__(self, llm_client: Optional[BaseLLMClient] = None):
         self._llm_override = llm_client
+
+    def _resolve_llm(self, allow_llm: bool) -> Optional[BaseLLMClient]:
+        if not allow_llm:
+            return None
+        if self._llm_override is not None:
+            return self._llm_override
+        return get_llm_provider_manager().get_client()
+
+    @staticmethod
+    def _extract_llm_meta(llm: BaseLLMClient) -> Dict[str, Any]:
+        lu_prov = getattr(llm, "last_used_provider", None)
+        lu_mdl = getattr(llm, "last_used_model", None)
+        orig_fail = getattr(llm, "original_failure", None)
+        fb_used = getattr(llm, "fallback_used", False)
+        fo_hist = getattr(llm, "failover_history", None)
+        return {
+            "ai_provider": lu_prov if isinstance(lu_prov, str) else getattr(llm, "provider_name", "llm"),
+            "ai_model": lu_mdl if isinstance(lu_mdl, str) else getattr(llm, "model", None),
+            "fallback_used": fb_used if isinstance(fb_used, bool) else False,
+            "original_failure": orig_fail if isinstance(orig_fail, str) else None,
+            "failover_history": list(fo_hist) if isinstance(fo_hist, list) else [],
+        }
+
+    def format_general_ai(
+        self,
+        question: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        allow_llm: bool = True,
+    ) -> Dict[str, Any]:
+        llm = self._resolve_llm(allow_llm)
+        if llm is None:
+            return {
+                "answer": "General AI mode requires an active LLM provider, which is currently disabled or unavailable.",
+                "ai_available": False,
+                "ai_provider": None,
+                "ai_model": None,
+                "fallback_used": False,
+                "original_failure": None,
+                "failover_history": [],
+                "llm_latency_ms": 0.0,
+                "llm_error": "No LLM provider configured/available",
+                "llm_error_category": "Not configured",
+            }
+
+        sys_prompt = (
+            "You are a helpful, accurate enterprise AI assistant (covering software engineering, "
+            "networking, Linux, PowerShell, Python, Cisco technologies, and general knowledge). "
+            "Do not claim to have queried live CUCM devices unless tool data is explicitly provided."
+        )
+        recent = (history or [])[-6:]
+        conv_str = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in recent)
+        user_prompt = f"Conversation history:\n{conv_str}\n\nUser: {question}" if conv_str else question
+
+        t0 = time.perf_counter()
+        try:
+            try:
+                ai_text = llm.generate(sys_prompt, user_prompt, json_mode=False).strip()
+            except TypeError:
+                ai_text = llm.generate(sys_prompt, user_prompt).strip()
+            lat = round((time.perf_counter() - t0) * 1000.0, 1)
+            if not ai_text:
+                raise ValueError("Empty LLM response")
+            meta = self._extract_llm_meta(llm)
+            return {
+                "answer": ai_text,
+                "ai_available": True,
+                "llm_latency_ms": lat,
+                "llm_error": None,
+                "llm_error_category": None,
+                **meta,
+            }
+        except Exception as exc:
+            lat = round((time.perf_counter() - t0) * 1000.0, 1)
+            return {
+                "answer": f"Unable to generate General AI response: {categorize_llm_error(exc)}.",
+                "ai_available": False,
+                "ai_provider": getattr(llm, "provider_name", None),
+                "ai_model": getattr(llm, "model", None),
+                "fallback_used": False,
+                "original_failure": None,
+                "failover_history": [],
+                "llm_latency_ms": lat,
+                "llm_error": sanitize_llm_error(exc),
+                "llm_error_category": categorize_llm_error(exc),
+            }
 
     def format(
         self,
@@ -20,6 +105,8 @@ class ResponseFormatter:
         tool_name: str,
         tool_result: Dict[str, Any],
         allow_llm: bool = True,
+        intent_type: str = "CUCM_OPERATION",
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         rows = tool_result.get("rows") or []
         table = self._build_table(rows)
@@ -37,9 +124,8 @@ class ResponseFormatter:
             }
 
         deterministic_text = self._deterministic_answer(tool_name, tool_result)
-        mgr = get_llm_provider_manager()
-        llm = self._llm_override if self._llm_override is not None else (mgr.get_client() if allow_llm else None)
-        if llm is None or not allow_llm:
+        llm = self._resolve_llm(allow_llm)
+        if llm is None:
             return {
                 "answer": deterministic_text,
                 "table": table,
@@ -51,14 +137,27 @@ class ResponseFormatter:
                 "llm_error_category": None,
             }
 
-        sys_prompt = (
-            "You are a Cisco CUCM assistant. Answer the user's question using ONLY the provided JSON tool result. "
-            "Never invent device names, counts, or statuses not present in the JSON. Keep it concise and factual."
-        )
+        if intent_type == "HYBRID":
+            sys_prompt = (
+                "You are a Senior Cisco CUCM & Enterprise AI Assistant. "
+                "Combine the actual retrieved CUCM JSON data with clear technical explanation. "
+                "Clearly separate 'Retrieved CUCM Facts' from 'Technical Explanation / Possible Causes'. "
+                "Never invent device names, counts, or statuses not present in the JSON."
+            )
+        else:
+            sys_prompt = (
+                "You are a Cisco CUCM assistant. Answer the user's question using ONLY the provided JSON tool result. "
+                "Never invent device names, counts, or statuses not present in the JSON. Keep it concise and factual."
+            )
+
         compact_payload = {k: v for k, v in tool_result.items() if k != "rows"}
         compact_payload["rows_preview"] = rows[:25]
         compact_payload["total_rows"] = len(rows)
-        user_prompt = f"Question: {question}\nTool: {tool_name}\nTool Output:\n{json.dumps(compact_payload, default=str)}"
+        recent = (history or [])[-4:]
+        user_prompt = (
+            f"Recent history: {json.dumps(recent)}\n"
+            f"Question: {question}\nTool: {tool_name}\nTool Output:\n{json.dumps(compact_payload, default=str)}"
+        )
 
         t0 = time.perf_counter()
         try:
@@ -67,28 +166,18 @@ class ResponseFormatter:
             except TypeError:
                 ai_text = llm.generate(sys_prompt, user_prompt).strip()
             lat = round((time.perf_counter() - t0) * 1000.0, 1)
-            if ai_text:
-                lu_prov = getattr(llm, "last_used_provider", None)
-                lu_mdl = getattr(llm, "last_used_model", None)
-                orig_fail = getattr(llm, "original_failure", None)
-                fb_used = getattr(llm, "fallback_used", False)
-                fo_hist = getattr(llm, "failover_history", None)
-                actual_prov = lu_prov if isinstance(lu_prov, str) else getattr(llm, "provider_name", "llm")
-                actual_mdl = lu_mdl if isinstance(lu_mdl, str) else getattr(llm, "model", None)
-                return {
-                    "answer": ai_text,
-                    "table": table,
-                    "ai_available": True,
-                    "ai_provider": actual_prov,
-                    "ai_model": actual_mdl,
-                    "fallback_used": fb_used if isinstance(fb_used, bool) else False,
-                    "original_failure": orig_fail if isinstance(orig_fail, str) else None,
-                    "failover_history": list(fo_hist) if isinstance(fo_hist, list) else [],
-                    "llm_latency_ms": lat,
-                    "llm_error": None,
-                    "llm_error_category": None,
-                }
-            raise ValueError("Empty LLM response")
+            if not ai_text:
+                raise ValueError("Empty LLM response")
+            meta = self._extract_llm_meta(llm)
+            return {
+                "answer": ai_text,
+                "table": table,
+                "ai_available": True,
+                "llm_latency_ms": lat,
+                "llm_error": None,
+                "llm_error_category": None,
+                **meta,
+            }
         except Exception as exc:
             lat = round((time.perf_counter() - t0) * 1000.0, 1)
             return {

@@ -399,6 +399,14 @@ async function exportReport(fmt) {
 
 // FLOATING CUCM AI ASSISTANT + SETTINGS
 let currentSessionId = 'default';
+let currentAssistantMode = 'auto';
+
+function setAssistantMode(mode) {
+  currentAssistantMode = mode;
+  document.getElementById('modeBtnAuto').classList.toggle('active', mode === 'auto');
+  document.getElementById('modeBtnGeneral').classList.toggle('active', mode === 'general');
+  document.getElementById('modeBtnCucm').classList.toggle('active', mode === 'cucm');
+}
 
 function openChatWidget() {
   document.getElementById('chatWidget').classList.remove('hidden');
@@ -528,7 +536,10 @@ async function applyProviderConfig() {
 }
 
 function modeBadge(mode) {
-  if (mode === 'LLM_GENERATED') return '<span class="badge badge-healthy">[LLM GENERATED]</span>';
+  if (mode === 'GENERAL_AI') return '<span class="badge badge-healthy">[GENERAL AI]</span>';
+  if (mode === 'HYBRID') return '<span class="badge badge-healthy">[HYBRID]</span>';
+  if (mode === 'LLM_GENERATED') return '<span class="badge badge-healthy">[CUCM OPERATIONS]</span>';
+  if (mode === 'CLARIFICATION_REQUIRED') return '<span class="badge badge-warning">[CLARIFICATION]</span>';
   if (mode === 'TOOL_ONLY') return '<span class="badge badge-unknown">[TOOL ONLY]</span>';
   if (mode === 'LLM_FAILED') return '<span class="badge badge-critical">[LLM FAILED]</span>';
   return '<span class="badge badge-warning">[PYTHON FALLBACK]</span>';
@@ -593,7 +604,12 @@ async function sendChat(overrideText = null, executionPreference = 'auto') {
     const res = await fetch('/api/assistant/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, session_id: currentSessionId, execution_preference: executionPreference })
+      body: JSON.stringify({
+        message: q,
+        mode: currentAssistantMode,
+        conversation_id: currentSessionId,
+        execution_preference: executionPreference
+      })
     });
     const reply = await res.json();
     appendChatBubble(reply);

@@ -330,6 +330,21 @@ h1, h2, h3, .brand-title { font-family: 'Manrope', 'Inter', sans-serif; }
   padding: 8px 14px; font-size: 0.76rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: rgba(15, 23, 42, 0.75); border-bottom: 1px solid rgba(148, 163, 184, 0.15);
 }
+.chat-mode-bar {
+  padding: 6px 12px; display: flex; gap: 6px;
+  background: rgba(15, 23, 42, 0.65); border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+.mode-pill {
+  flex: 1; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(30, 41, 59, 0.55);
+  color: var(--text-muted); border-radius: 8px; padding: 5px 8px; font-size: 0.72rem;
+  font-weight: 700; cursor: pointer; font-family: 'Manrope', 'Inter', sans-serif;
+  transition: all 0.15s ease;
+}
+.mode-pill:hover { color: #fff; border-color: rgba(129, 140, 248, 0.5); }
+.mode-pill.active {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.55), rgba(124, 58, 237, 0.55));
+  border-color: rgba(129, 140, 248, 0.85); color: #fff;
+}
 .chat-settings-panel {
   padding: 12px 14px; background: rgba(15, 23, 42, 0.92);
   border-bottom: 1px solid rgba(148, 163, 184, 0.22); font-size: 0.78rem;

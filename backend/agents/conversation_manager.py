@@ -39,7 +39,9 @@ class ChatMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    execution_mode: str = "DETERMINISTIC_FALLBACK"  # LLM_GENERATED | DETERMINISTIC_FALLBACK | TOOL_ONLY | LLM_FAILED
+    selected_mode: str = "auto"  # auto | general | cucm
+    intent_type: str = "CUCM_OPERATION"  # GENERAL_AI | CUCM_OPERATION | HYBRID | CLARIFICATION_REQUIRED
+    execution_mode: str = "DETERMINISTIC_FALLBACK"  # GENERAL_AI | LLM_GENERATED | HYBRID | CLARIFICATION_REQUIRED | DETERMINISTIC_FALLBACK | TOOL_ONLY | LLM_FAILED
     execution_notice: str = ""
     tool_used: Optional[str] = None
     source: Optional[str] = None

@@ -299,10 +299,15 @@
       </div>
     </div>
 
-    <!-- EXECUTION STATUS BAR -->
+    <!-- EXECUTION STATUS BAR + MODE SELECTOR -->
     <div id="chatStatusBanner" class="chat-status-bar">
       <span id="chatStateBadge" class="badge badge-unknown">CHECKING...</span>
       <span id="chatStateDetail" class="muted">Checking LLM provider status...</span>
+    </div>
+    <div class="chat-mode-bar" role="group" aria-label="Assistant Operating Mode">
+      <button type="button" class="mode-pill active" id="modeBtnAuto" onclick="setAssistantMode('auto')">AUTO</button>
+      <button type="button" class="mode-pill" id="modeBtnGeneral" onclick="setAssistantMode('general')">GENERAL AI</button>
+      <button type="button" class="mode-pill" id="modeBtnCucm" onclick="setAssistantMode('cucm')">CUCM OPERATIONS</button>
     </div>
 
     <!-- AI SETTINGS PANEL -->
