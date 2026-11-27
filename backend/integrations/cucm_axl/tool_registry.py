@@ -4,6 +4,14 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 from pydantic import BaseModel, Field
 
+from backend.connectivity.exceptions import (
+    CUCMAXLAuthenticationError,
+    CUCMAXLConnectionError,
+    CUCMSSHAuthenticationError,
+    CUCMSSHConnectionError,
+    CUCMSSHTimeoutError,
+)
+
 
 class ToolSpec(BaseModel):
     name: str
@@ -55,11 +63,36 @@ class AXLToolRegistry:
             result.setdefault("source", spec.source_api)
             result.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
             return result
+        except (CUCMAXLAuthenticationError, CUCMSSHAuthenticationError) as exc:
+            return {
+                "success": False,
+                "tool": name,
+                "source": spec.source_api,
+                "retrieval_status": "AUTHENTICATION_FAILED",
+                "authentication_status": "FAILED",
+                "query_status": "NOT_EXECUTED",
+                "error": str(exc),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        except (CUCMAXLConnectionError, CUCMSSHConnectionError, CUCMSSHTimeoutError) as exc:
+            return {
+                "success": False,
+                "tool": name,
+                "source": spec.source_api,
+                "retrieval_status": "CONNECTION_FAILED",
+                "authentication_status": "NOT_REACHED",
+                "query_status": "NOT_EXECUTED",
+                "error": str(exc),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
         except Exception as exc:
             return {
                 "success": False,
                 "tool": name,
                 "source": spec.source_api,
+                "retrieval_status": "QUERY_FAILED",
+                "authentication_status": "SUCCESS",
+                "query_status": "FAILED",
                 "error": str(exc),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }

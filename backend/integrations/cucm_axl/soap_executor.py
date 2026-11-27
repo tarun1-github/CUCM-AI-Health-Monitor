@@ -33,6 +33,13 @@ class AXLSoapExecutor:
             raise CUCMAXLSoapFaultError(f"AXL operation '{operation}' is not in the read-only allowlist.")
         return self.client._post_soap(operation, body_xml)
 
+    def get_ccm_version(self) -> Optional[str]:
+        root = self.execute_operation("getCCMVersion")
+        for elem in root.iter():
+            if elem.tag.split("}")[-1] == "version" and elem.text and elem.text.strip():
+                return elem.text.strip()
+        return None
+
     def get_phone(self, device_name: str) -> Optional[Dict[str, Any]]:
         clean = escape(device_name.strip())
         try:

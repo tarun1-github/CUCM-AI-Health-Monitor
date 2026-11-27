@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     mode: str = "auto"  # "auto" | "general" | "cucm"
     execution_preference: str = "auto"  # "auto" | "tool_only"
+    server_id: Optional[str] = None
 
 
 class ToolExecuteRequest(BaseModel):
@@ -81,6 +82,7 @@ def assistant_chat(req: ChatRequest) -> ChatMessage:
         session_id=sid,
         execution_preference=req.execution_preference,
         mode=req.mode,
+        server_id=req.server_id,
     )
 
 

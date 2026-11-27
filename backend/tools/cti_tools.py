@@ -7,12 +7,13 @@ from backend.integrations.cucm_axl.tool_registry import AXLToolRegistry, ToolSpe
 
 
 def register_cti_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkitAXLClient] = None) -> None:
-    def _client() -> CUCMToolkitAXLClient:
-        return client or CUCMToolkitAXLClient()
+    def _client(params: Dict[str, Any]) -> CUCMToolkitAXLClient:
+        return client or CUCMToolkitAXLClient.from_params(params)
 
     def handle_list_cti_route_points(params: Dict[str, Any]) -> Dict[str, Any]:
         limit = int(params.get("limit", 200))
-        rows = _client().sql.execute_template("cti_route_points", limit=limit)
+        ev = _client(params).sql.execute_template_with_evidence("cti_route_points", limit=limit)
+        rows = ev["rows"]
         # Group multiple DNs per CTI Route Point if any
         by_name: Dict[str, Dict[str, Any]] = {}
         for r in rows:

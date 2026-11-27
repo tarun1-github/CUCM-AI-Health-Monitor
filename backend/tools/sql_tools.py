@@ -8,8 +8,8 @@ from backend.integrations.cucm_axl.tool_registry import AXLToolRegistry, ToolSpe
 
 
 def register_sql_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkitAXLClient] = None) -> None:
-    def _client() -> CUCMToolkitAXLClient:
-        return client or CUCMToolkitAXLClient()
+    def _client(params: Dict[str, Any]) -> CUCMToolkitAXLClient:
+        return client or CUCMToolkitAXLClient.from_params(params)
 
     def handle_approved_sql(params: Dict[str, Any]) -> Dict[str, Any]:
         template = str(params.get("template_name", "")).strip()
@@ -17,8 +17,8 @@ def register_sql_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkitAX
             raise ValueError(f"Parameter 'template_name' is required. Allowed: {sorted(APPROVED_SQL_TEMPLATES.keys())}")
         sql_params = params.get("params") or {}
         limit = int(params.get("limit", 200))
-        rows = _client().sql.execute_template(template, params=sql_params, limit=limit)
-        return {"template_name": template, "count": len(rows), "rows": rows}
+        ev = _client(params).sql.execute_template_with_evidence(template, params=sql_params, limit=limit)
+        return {"template_name": template, **ev}
 
     registry.register(
         ToolSpec(

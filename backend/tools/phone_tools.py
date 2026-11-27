@@ -7,14 +7,14 @@ from backend.integrations.cucm_axl.tool_registry import AXLToolRegistry, ToolSpe
 
 
 def register_phone_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkitAXLClient] = None) -> None:
-    def _client() -> CUCMToolkitAXLClient:
-        return client or CUCMToolkitAXLClient()
+    def _client(params: Dict[str, Any]) -> CUCMToolkitAXLClient:
+        return client or CUCMToolkitAXLClient.from_params(params)
 
     def handle_get_phone(params: Dict[str, Any]) -> Dict[str, Any]:
         device_name = str(params.get("device_name", "")).strip()
         if not device_name:
             raise ValueError("Parameter 'device_name' is required.")
-        c = _client()
+        c = _client(params)
         phone = c.soap.get_phone(device_name)
         reg = None
         try:
@@ -43,12 +43,12 @@ def register_phone_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkit
         pattern = str(params.get("pattern", "")).strip()
         if not pattern:
             raise ValueError("Parameter 'pattern' (directory number) is required.")
-        rows = _client().sql.execute_template("phones_by_dn", {"pattern": pattern})
+        rows = _client(params).sql.execute_template("phones_by_dn", {"pattern": pattern})
         return {"pattern": pattern, "count": len(rows), "rows": rows}
 
     def handle_list_device_pools(params: Dict[str, Any]) -> Dict[str, Any]:
         limit = int(params.get("limit", 200))
-        rows = _client().sql.execute_template("device_pools", limit=limit)
+        rows = _client(params).sql.execute_template("device_pools", limit=limit)
         return {"count": len(rows), "rows": rows}
 
     registry.register(

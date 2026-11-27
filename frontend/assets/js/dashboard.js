@@ -280,6 +280,7 @@ async function refreshDashboard() {
     if (snap) renderSnapshot(snap);
     await loadTrends();
     await loadAssistantStatusOnly();
+    await loadDeviceInventory();
   } catch (err) {
     showBanner(`Failed to refresh dashboard: ${err}`, true);
   } finally {
@@ -549,6 +550,31 @@ function modeBadge(mode) {
   return '<span class="badge badge-warning">[PYTHON FALLBACK]</span>';
 }
 
+function cucmStatusBadge(msg) {
+  const st = msg.cucm_retrieval_status || 'NOT_EXECUTED';
+  if (st === 'DATA_RETRIEVED') {
+    const recs = msg.evidence?.retrieval?.records_returned;
+    const lbl = recs === 0 ? 'CUCM LIVE DATA – ZERO RECORDS' : 'CUCM LIVE DATA – SUCCESS';
+    return `<span class="badge badge-healthy">[${lbl}]</span>`;
+  }
+  if (st === 'AUTHENTICATION_FAILED' || st === 'CONNECTION_FAILED' || st === 'QUERY_FAILED') {
+    return `<span class="badge badge-critical">[CUCM ${st}]</span>`;
+  }
+  return '<span class="badge badge-unknown">[NO CUCM DATA]</span>';
+}
+
+function aiStatusBadge(msg) {
+  const mode = msg.execution_mode;
+  const prov = (msg.llm?.provider || 'AI').toUpperCase();
+  if (mode === 'GENERAL_AI') return `<span class="badge badge-healthy">[GENERAL AI – ${prov}]</span>`;
+  if (mode === 'HYBRID') return `<span class="badge badge-healthy">[HYBRID – ${prov}]</span>`;
+  if (mode === 'LLM_GENERATED') return `<span class="badge badge-healthy">[AI EXPLANATION – ${prov}]</span>`;
+  if (mode === 'CLARIFICATION_REQUIRED') return '<span class="badge badge-warning">[CLARIFICATION]</span>';
+  if (mode === 'TOOL_ONLY') return '<span class="badge badge-unknown">[TOOL ONLY]</span>';
+  if (mode === 'LLM_FAILED') return '<span class="badge badge-critical">[LLM FAILED]</span>';
+  return '<span class="badge badge-warning">[PYTHON FALLBACK]</span>';
+}
+
 function appendChatBubble(msg) {
   const box = document.getElementById('chatMessages');
   const div = document.createElement('div');
@@ -569,8 +595,39 @@ function appendChatBubble(msg) {
     const tool = msg.tool || {};
     const timing = msg.timing || {};
     const noticeHtml = msg.execution_notice ? `<div class="chat-notice">${msg.execution_notice}</div>` : '';
+
+    let evidenceHtml = '';
+    if (msg.evidence && msg.evidence.retrieval && msg.cucm_retrieval_status !== 'NOT_EXECUTED') {
+      const t = msg.evidence.target || {};
+      const r = msg.evidence.retrieval || {};
+      const rawJson = JSON.stringify(msg.evidence.raw_response || {}, null, 2).replace(/</g, '&lt;');
+      evidenceHtml = `
+        <details class="evidence-details">
+          <summary>View CUCM Execution Evidence</summary>
+          <div class="evidence-grid">
+            <div><strong>Target IP:</strong> ${t.ip || 'N/A'}</div>
+            <div><strong>Hostname:</strong> ${t.hostname || 'N/A'}</div>
+            <div><strong>Auth:</strong> ${r.authentication_status || 'N/A'}</div>
+            <div><strong>Operation:</strong> ${r.operation || r.template_id || 'N/A'}</div>
+            <div><strong>Endpoint:</strong> ${r.endpoint || 'N/A'}</div>
+            <div><strong>Tool:</strong> ${r.tool || 'N/A'}</div>
+            <div><strong>Query Status:</strong> ${r.query_status || 'N/A'}</div>
+            <div><strong>Records:</strong> ${r.records_returned ?? 'N/A'}</div>
+            ${r.registered_count !== undefined && r.registered_count !== null ? `<div><strong>Registered / Unreg:</strong> ${r.registered_count} / ${r.unregistered_count ?? 0}</div>` : ''}
+            <div><strong>Timestamp:</strong> ${r.collected_at_ist || r.collected_at_utc || 'N/A'}</div>
+            <div><strong>Source:</strong> ${r.source || 'N/A'}</div>
+          </div>
+        </details>
+        <details class="evidence-details">
+          <summary>View Raw CUCM Response</summary>
+          <pre class="evidence-pre">${rawJson}</pre>
+        </details>
+      `;
+    }
+
     provHtml = `
       ${noticeHtml}
+      ${evidenceHtml}
       <div class="chat-provenance">
         Mode: ${msg.execution_mode || 'DETERMINISTIC_FALLBACK'} | Provider: ${llm.provider || 'none'} (${llm.model || 'N/A'}) |
         Tool: ${tool.name || 'none'} (${tool.source || 'N/A'}) | Total: ${timing.total_latency_ms ?? 0} ms
@@ -580,7 +637,7 @@ function appendChatBubble(msg) {
 
   const copyBtn = msg.role === 'assistant'
     ? `<button type="button" class="copy-btn" data-action="copy-response" aria-label="Copy response">📋 Copy</button>` : '';
-  const badgeHtml = msg.role === 'assistant' ? modeBadge(msg.execution_mode) : '';
+  const badgeHtml = msg.role === 'assistant' ? `${cucmStatusBadge(msg)} ${aiStatusBadge(msg)}` : '';
   div.innerHTML = `<div class="chat-meta"><span>${msg.role === 'user' ? 'You' : 'CUCM AI Assistant'} • ${ts} ${badgeHtml}</span>${copyBtn}</div><div class="chat-content">${(msg.content || '').replace(/</g, '&lt;')}</div>${tableHtml}${provHtml}`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
@@ -797,7 +854,8 @@ async function sendChat(overrideText = null, executionPreference = 'auto') {
         message: q,
         mode: currentAssistantMode,
         conversation_id: currentSessionId,
-        execution_preference: executionPreference
+        execution_preference: executionPreference,
+        server_id: document.getElementById('targetServerSelect')?.value || null
       })
     });
     const reply = await res.json();
@@ -818,6 +876,104 @@ async function startNewChat() {
   document.getElementById('chatSessionLabel').textContent = `Session: ${currentSessionId}`;
   document.getElementById('chatMessages').innerHTML =
     '<div class="chat-bubble chat-assistant"><div class="chat-meta"><span>CUCM AI Assistant • New Chat</span></div><div>Started a new conversation session. Ask a CUCM question.</div></div>';
+}
+
+// DEVICE MANAGER (MULTI-SERVER CUCM)
+let registeredDevices = [];
+
+function toggleDeviceManager() {
+  document.getElementById('deviceManagerPanel').classList.toggle('hidden');
+  loadDeviceInventory();
+}
+
+async function loadDeviceInventory() {
+  try {
+    const r = await fetch('/api/devices');
+    if (!r.ok) return;
+    registeredDevices = await r.json();
+    const sel = document.getElementById('targetServerSelect');
+    if (sel) {
+      sel.innerHTML = registeredDevices.map(d =>
+        `<option value="${d.server_id}" ${d.is_default ? 'selected' : ''}>${d.name} (${d.host})${d.enabled ? '' : ' [Disabled]'}</option>`
+      ).join('');
+      const def = registeredDevices.find(d => d.is_default) || registeredDevices[0];
+      if (def) document.getElementById('deviceIp').textContent = def.host;
+    }
+    const body = document.getElementById('deviceManagerBody');
+    if (body) {
+      body.innerHTML = registeredDevices.map(d => `
+        <tr>
+          <td><strong>${d.name}</strong> ${d.is_default ? '<span class="badge badge-healthy">DEFAULT</span>' : ''}</td>
+          <td><code>${d.host}</code></td>
+          <td>${d.role} / ${d.cucm_version}</td>
+          <td><span class="badge ${d.enabled ? 'badge-healthy' : 'badge-unknown'}">${d.enabled ? 'ENABLED' : 'DISABLED'}</span></td>
+          <td>
+            <button class="chip-btn" onclick="testDeviceProto('${d.server_id}', 'test-ssh')">SSH</button>
+            <button class="chip-btn" onclick="testDeviceProto('${d.server_id}', 'test-axl')">AXL</button>
+            <button class="chip-btn" onclick="testDeviceProto('${d.server_id}', 'test-risport')">RIS</button>
+            <button class="chip-btn" onclick="testDeviceProto('${d.server_id}', 'test-perfmon')">PerfMon</button>
+          </td>
+          <td>
+            <button class="chip-btn" onclick="setDefaultDevice('${d.server_id}')">Set Default</button>
+            <button class="chip-btn" onclick="toggleDeviceEnable('${d.server_id}', ${!d.enabled})">${d.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="chip-btn" onclick="deleteDevice('${d.server_id}', '${d.name}')">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (_) { }
+}
+
+async function onSelectTargetServer() {
+  const sid = document.getElementById('targetServerSelect')?.value;
+  if (sid) await setDefaultDevice(sid);
+}
+
+async function setDefaultDevice(serverId) {
+  await fetch(`/api/devices/${serverId}/default`, { method: 'POST' });
+  await loadDeviceInventory();
+}
+
+async function toggleDeviceEnable(serverId, enable) {
+  await fetch(`/api/devices/${serverId}/${enable ? 'enable' : 'disable'}`, { method: 'POST' });
+  await loadDeviceInventory();
+}
+
+async function deleteDevice(serverId, name) {
+  if (!confirm(`Delete CUCM server '${name}'?`)) return;
+  await fetch(`/api/devices/${serverId}`, { method: 'DELETE' });
+  await loadDeviceInventory();
+}
+
+async function testDeviceProto(serverId, action) {
+  showBanner(`Running ${action} for ${serverId}...`);
+  const r = await fetch(`/api/devices/${serverId}/${action}`, { method: 'POST' });
+  const data = await r.json();
+  showBanner(`${serverId} ${action}: ${data.connected ? 'OK' : `FAILED (${data.error})`}`, !data.connected);
+  await loadDeviceInventory();
+}
+
+async function addCucmServer() {
+  const payload = {
+    name: document.getElementById('dmName').value.trim(),
+    host: document.getElementById('dmHost').value.trim(),
+    cucm_version: document.getElementById('dmVersion').value.trim() || '15.0',
+    role: document.getElementById('dmRole').value,
+    axl_username: document.getElementById('dmAxlUser').value.trim() || 'Administrator',
+    axl_password: document.getElementById('dmAxlPass').value || null,
+    cli_username: document.getElementById('dmCliUser').value.trim() || 'Administrator',
+    cli_password: document.getElementById('dmCliPass').value || null,
+  };
+  const r = await fetch('/api/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!r.ok) {
+    const err = await r.json();
+    showBanner(`Failed to add server: ${err.detail}`, true);
+    return;
+  }
+  document.getElementById('dmAxlPass').value = '';
+  document.getElementById('dmCliPass').value = '';
+  showBanner(`Added CUCM server ${payload.name} (${payload.host}).`);
+  await loadDeviceInventory();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -1,6 +1,7 @@
 """Approved read-only Informix SQL query templates and parameter sanitization for CUCM 15 AXL."""
 
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from backend.connectivity.axl_client import CUCMAXLClient
@@ -56,14 +57,25 @@ APPROVED_SQL_TEMPLATES: Dict[str, str] = {
         "WHERE tc.name = 'CTI Route Point' "
         "ORDER BY d.name"
     ),
+    "phones_inventory": (
+        "SELECT d.name, d.description, tm.name AS model, dp.name AS device_pool, css.name AS css "
+        "FROM device d "
+        "INNER JOIN typeclass tc ON d.tkclass = tc.enum "
+        "LEFT JOIN typemodel tm ON d.tkmodel = tm.enum "
+        "LEFT JOIN devicepool dp ON d.fkdevicepool = dp.pkid "
+        "LEFT JOIN callingsearchspace css ON d.fkcallingsearchspace = css.pkid "
+        "WHERE tc.name = 'Phone' "
+        "ORDER BY d.name"
+    ),
     "sip_trunks": (
         "SELECT d.name, d.description, dp.name AS device_pool, sp.name AS sip_profile, css.name AS css "
         "FROM device d "
         "INNER JOIN typeclass tc ON d.tkclass = tc.enum "
+        "INNER JOIN typedeviceprotocol tdp ON d.tkdeviceprotocol = tdp.enum "
         "LEFT JOIN devicepool dp ON d.fkdevicepool = dp.pkid "
         "LEFT JOIN sipprofile sp ON d.fksipprofile = sp.pkid "
         "LEFT JOIN callingsearchspace css ON d.fkcallingsearchspace = css.pkid "
-        "WHERE tc.name = 'SIP Trunk' "
+        "WHERE tc.name = 'Trunk' AND UPPER(tdp.name) = 'SIP' "
         "ORDER BY d.name"
     ),
     "device_pools": (
@@ -111,3 +123,26 @@ class ApprovedSQLExecutor:
 
         rows = self.client.execute_sql_query(sql)
         return rows[: max(1, min(limit, 1000))]
+
+    def execute_template_with_evidence(
+        self,
+        template_name: str,
+        params: Optional[Dict[str, str]] = None,
+        limit: int = 200,
+    ) -> Dict[str, Any]:
+        """Execute approved SELECT template via AXL SOAP and return rows + verifiable execution evidence."""
+        t0 = time.perf_counter()
+        rows = self.execute_template(template_name, params=params, limit=limit)
+        elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 1)
+        outcome = "SUCCESS_WITH_RECORDS" if len(rows) > 0 else "SUCCESS_WITH_ZERO_RECORDS"
+        return {
+            "rows": rows,
+            "count": len(rows),
+            "template_id": template_name,
+            "endpoint": self.client.endpoint,
+            "axl_version": self.client.config.axl_version,
+            "authentication_status": "SUCCESS",
+            "query_status": "SUCCESS",
+            "query_outcome": outcome,
+            "duration_ms": elapsed_ms,
+        }

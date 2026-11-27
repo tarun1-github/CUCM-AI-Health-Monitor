@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/css/dashboard.css?v=5.2" />
+  <link rel="stylesheet" href="/assets/css/dashboard.css?v=6.1" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -26,6 +26,8 @@
           <h1 class="brand-title">CUCM AI Health Monitor</h1>
           <div class="brand-meta">
             <span class="env-pill" id="envBadge">ENV: DEVELOPMENT</span>
+            <span class="meta-sep">•</span>
+            <span>Environment: <select id="targetServerSelect" class="chat-select" style="width:auto;display:inline-block;" onchange="onSelectTargetServer()"></select></span>
             <span class="meta-sep">•</span>
             <span>Target IP: <strong id="deviceIp">10.197.206.141</strong></span>
             <span class="meta-sep">•</span>
@@ -48,6 +50,7 @@
 
     <!-- ACTION TOOLBAR -->
     <section class="glass-panel action-toolbar">
+      <button class="btn-3d btn-slate" id="btnDeviceMgr" onclick="toggleDeviceManager()">🖥️ CUCM Servers</button>
       <button class="btn-3d btn-cyan" id="btnConnTest" onclick="testConnectivity()">🔌 Connectivity Test</button>
       <button class="btn-3d btn-indigo" id="btnSysHealth" onclick="runPartialHealthCheck('btnSysHealth', ['show_version_active','show_status','show_hardware','show_process_load','show_perf_processor','show_perf_memory'], 'System Health')">🖥️ System Health</button>
       <button class="btn-3d btn-violet" id="btnSvcHealth" onclick="runPartialHealthCheck('btnSvcHealth', ['utils_service_list'], 'Service Health')">⚙️ Service Health</button>
@@ -76,6 +79,36 @@
         <div id="progressFill" class="progress-fill" style="width: 0%;"></div>
       </div>
       <div id="progressSteps" class="muted progress-steps">Step 0 of 0</div>
+    </section>
+
+    <!-- DEVICE MANAGER PANEL -->
+    <section id="deviceManagerPanel" class="glass-panel hidden">
+      <div class="section-header">
+        <div>
+          <h2>🖥️ CUCM Device Manager</h2>
+          <p class="section-sub">Onboard, test, and manage multiple CUCM environments (credentials stored encrypted)</p>
+        </div>
+        <button type="button" class="btn-3d btn-slate btn-xs" onclick="toggleDeviceManager()">Close</button>
+      </div>
+      <div class="table-wrap" style="margin-bottom:14px;">
+        <table class="glass-table">
+          <thead>
+            <tr><th>Name</th><th>Host</th><th>Role / Ver</th><th>Status</th><th>Tests</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="deviceManagerBody"></tbody>
+        </table>
+      </div>
+      <form class="sys-meta-grid" onsubmit="event.preventDefault(); addCucmServer();">
+        <input id="dmName" class="chat-select" placeholder="Server Name (e.g. CUCM-SUB-01)" required />
+        <input id="dmHost" class="chat-select" placeholder="IP / FQDN (e.g. 10.197.206.142)" required />
+        <input id="dmVersion" class="chat-select" placeholder="Version (15.0)" value="15.0" />
+        <select id="dmRole" class="chat-select"><option value="Publisher">Publisher</option><option value="Subscriber">Subscriber</option></select>
+        <input id="dmAxlUser" class="chat-select" placeholder="AXL Username" value="Administrator" />
+        <input id="dmAxlPass" type="password" class="chat-select" placeholder="AXL Password" />
+        <input id="dmCliUser" class="chat-select" placeholder="CLI Username" value="Administrator" />
+        <input id="dmCliPass" type="password" class="chat-select" placeholder="CLI Password" />
+        <button type="submit" class="btn-3d btn-primary btn-xs">＋ Add CUCM Server</button>
+      </form>
     </section>
 
     <!-- STATUS BANNER -->
@@ -393,6 +426,6 @@
 
   <div id="copyToast" class="copy-toast hidden" role="status" aria-live="polite"></div>
 
-  <script src="/assets/js/dashboard.js?v=5.2"></script>
+  <script src="/assets/js/dashboard.js?v=6.1"></script>
 </body>
 </html>

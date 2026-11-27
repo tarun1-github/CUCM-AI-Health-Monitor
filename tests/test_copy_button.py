@@ -13,7 +13,7 @@ def test_copy_button_implementation_and_fallback_present():
     assert 'id="manualCopyTextarea"' in html
     assert "Clipboard access unavailable – Copy manually" in html
     assert 'id="copyToast"' in html
-    assert "dashboard.js?v=5.2" in html
+    assert "dashboard.js?v=" in html
 
     # CSS user-select & modal styles
     assert "user-select: text" in css

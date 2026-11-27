@@ -7,13 +7,23 @@ from backend.integrations.cucm_axl.tool_registry import AXLToolRegistry, ToolSpe
 
 
 def register_trunk_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkitAXLClient] = None) -> None:
-    def _client() -> CUCMToolkitAXLClient:
-        return client or CUCMToolkitAXLClient()
+    def _client(params: Dict[str, Any]) -> CUCMToolkitAXLClient:
+        return client or CUCMToolkitAXLClient.from_params(params)
 
     def handle_list_sip_trunks(params: Dict[str, Any]) -> Dict[str, Any]:
         limit = int(params.get("limit", 200))
-        rows = _client().sql.execute_template("sip_trunks", limit=limit)
-        return {"count": len(rows), "rows": rows}
+        ev = _client(params).sql.execute_template_with_evidence("sip_trunks", limit=limit)
+        return {
+            "count": ev["count"],
+            "rows": ev["rows"],
+            "template_id": ev["template_id"],
+            "endpoint": ev["endpoint"],
+            "axl_version": ev["axl_version"],
+            "authentication_status": ev["authentication_status"],
+            "query_status": ev["query_status"],
+            "query_outcome": ev["query_outcome"],
+            "duration_ms": ev["duration_ms"],
+        }
 
     registry.register(
         ToolSpec(

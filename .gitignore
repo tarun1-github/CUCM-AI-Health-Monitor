@@ -17,8 +17,10 @@ htmlcov/
 
 # Runtime data & outputs
 logs/*.log
+data/devices/
 data/raw/*.json
 data/processed/*.json
+data/snapshots/
 reports/*.html
 reports/*.pdf
 reports/*.csv

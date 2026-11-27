@@ -110,10 +110,11 @@ class IntentRouter:
             "web/CSS/HTML, general Cisco theory (e.g., 'What is CSS?', 'Explain SIP trunk architecture', "
             "'What is Calling Search Space in CUCM?'), writing, or troubleshooting theory NOT asking for live cluster data.\n"
             "2. CUCM_OPERATION: Requests for live/configured data from the user's CUCM cluster "
-            "(e.g., 'How many phones are registered?', 'Show unregistered phones', 'How many CTI Route Points are configured?', "
-            "'Show all SIP trunks', 'Give me Publisher and Subscriber details', 'Find phone SEP...').\n"
-            "3. HYBRID: Requests that ask for BOTH live CUCM cluster data AND conceptual explanation or troubleshooting "
-            "(e.g., 'Show my configured SIP trunks and explain their purpose', 'Why might my phone be unregistered?').\n"
+            "(e.g., 'Check CPU utilization of 10.197.206.141', 'Show system status', 'Show services', "
+            "'Show network configuration', 'How many phones are registered?', 'Show unregistered phones', "
+            "'How many CTI Route Points are configured?', 'Show all SIP trunks', 'Give me Publisher and Subscriber details').\n"
+            "3. HYBRID: Requests that ask for BOTH live CUCM cluster data AND conceptual explanation or health interpretation "
+            "(e.g., 'Check CPU utilization and explain whether it is healthy', 'Show my configured SIP trunks and explain their purpose').\n"
             "4. CLARIFICATION_REQUIRED: Ambiguous short/abbreviated queries where the meaning is unclear "
             "(e.g., 'Tell me about CSS' or 'Check CSS' without specifying Cascading Style Sheets vs CUCM Calling Search Space).\n\n"
             f"User selected mode: {selected_mode}.\n"
@@ -203,8 +204,31 @@ class IntentRouter:
 
         # Conceptual / programming / general questions in auto mode
         if selected_mode == "auto" and re.match(r"^(?:what\s+is|explain|write|create|how\s+does|difference\s+between|prepare)\b", ql):
-            if not any(live_cue in ql for live_cue in ("my ", "configured", "registered", "unregistered", "cluster", "publisher", "subscriber", "sep")):
+            if not any(live_cue in ql for live_cue in ("my ", "configured", "registered", "unregistered", "cluster", "publisher", "subscriber", "sep", "10.", "192.168.", "172.")):
                 return RoutedIntent(intent_type="GENERAL_AI", tool_name=None, reason="Conceptual/general knowledge question")
+
+        # Live CPU utilization
+        if any(k in ql for k in ("cpu", "processor")) and "cucm_live_cpu_utilization" in tool_names:
+            itype = "HYBRID" if ("explain" in ql or "healthy" in ql or "why" in ql) else "CUCM_OPERATION"
+            return RoutedIntent(itype, "cucm_live_cpu_utilization", {}, reason="Matched live CPU utilization query")
+
+        # Live Memory / Disk
+        if any(k in ql for k in ("memory", "ram", "disk", "storage", "diskusage")) and "cucm_live_memory_disk" in tool_names:
+            itype = "HYBRID" if ("explain" in ql or "healthy" in ql) else "CUCM_OPERATION"
+            return RoutedIntent(itype, "cucm_live_memory_disk", {}, reason="Matched live memory/disk query")
+
+        # Live Services
+        if any(k in ql for k in ("service", "services")) and "cucm_live_services" in tool_names:
+            only_stopped = "stopped" in ql or "down" in ql
+            return RoutedIntent("CUCM_OPERATION", "cucm_live_services", {"only_stopped": only_stopped}, reason="Matched live services query")
+
+        # Live Network
+        if any(k in ql for k in ("network", "eth0", "gateway", "dns", "interface")) and "cucm_live_network_status" in tool_names:
+            return RoutedIntent("CUCM_OPERATION", "cucm_live_network_status", {}, reason="Matched live network status query")
+
+        # Live System Status / Version / Uptime / Hardware
+        if any(k in ql for k in ("system status", "uptime", "hardware", "cucm version", "version")) and "cucm_live_system_status" in tool_names:
+            return RoutedIntent("CUCM_OPERATION", "cucm_live_system_status", {}, reason="Matched live system status query")
 
         # Explicit CUCM operations
         dev_match = re.search(r"\b((?:SEP|CSF|BOT|TCT|TAB|IPC|ATA)[A-Za-z0-9_-]{4,})\b", question, re.IGNORECASE)

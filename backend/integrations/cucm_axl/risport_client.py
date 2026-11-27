@@ -1,13 +1,19 @@
 """CUCM RisPort70 Real-Time Serviceability SOAP Client."""
 
+import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from xml.sax.saxutils import escape
 
 import httpx
 
 from backend.connectivity.axl_client import AXLConfig
-from backend.connectivity.exceptions import CUCMAXLAuthenticationError, CUCMAXLConnectionError
+from backend.connectivity.exceptions import (
+    CUCMAXLAuthenticationError,
+    CUCMAXLConnectionError,
+    CUCMAXLSoapFaultError,
+)
 from backend.utils.logger import get_logger
 
 logger = get_logger("risport70", category="axl")
@@ -75,6 +81,7 @@ class RisPort70Client:
             "SOAPAction": '"http://schemas.cisco.com/ast/soap/selectCmDevice"',
         }
 
+        t0 = time.perf_counter()
         try:
             with httpx.Client(
                 verify=self.config.verify_ssl,
@@ -96,35 +103,112 @@ class RisPort70Client:
         if resp.status_code in (401, 403):
             raise CUCMAXLAuthenticationError(f"RISPort70 authentication failed (HTTP {resp.status_code}).")
         if resp.status_code != 200:
+            fault = self._extract_soap_fault(resp.text)
+            if fault:
+                raise CUCMAXLSoapFaultError(f"RISPort70 SOAP Fault (HTTP {resp.status_code}): {fault}")
             raise CUCMAXLConnectionError(f"RISPort70 returned HTTP {resp.status_code}")
 
-        return self._parse_response(resp.text)
+        parsed = self._parse_response(resp.text)
+        duration_ms = round((time.perf_counter() - t0) * 1000, 1)
+        now_utc = datetime.now(timezone.utc)
+        now_ist = now_utc.astimezone(timezone(timedelta(hours=5, minutes=30)))
+        devices = parsed["devices"]
+        parsed.update({
+            "endpoint": self.endpoint,
+            "target_ip": self.config.host,
+            "operation": "selectCmDevice",
+            "authentication_status": "SUCCESS",
+            "query_status": "SUCCESS",
+            "query_outcome": "SUCCESS_WITH_RECORDS" if devices else "SUCCESS_WITH_ZERO_RECORDS",
+            "duration_ms": duration_ms,
+            "collected_at_utc": now_utc.isoformat(),
+            "collected_at_ist": now_ist.strftime("%Y-%m-%d %H:%M:%S IST"),
+        })
+        return parsed
+
+    @staticmethod
+    def _extract_soap_fault(xml_text: str) -> Optional[str]:
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError:
+            return None
+        for elem in root.iter():
+            if elem.tag.split("}")[-1] == "Fault":
+                fault_str = None
+                for child in elem.iter():
+                    if child.tag.split("}")[-1] == "faultstring" and child.text:
+                        fault_str = child.text.strip()
+                        break
+                return fault_str or "Unknown SOAP Fault"
+        return None
+
+    @staticmethod
+    def _parse_state_info(state_text: Optional[str]) -> Dict[str, Any]:
+        if not state_text or not state_text.strip():
+            return {"raw": None, "nodes": []}
+        nodes: List[Dict[str, Any]] = []
+        try:
+            sroot = ET.fromstring(state_text.strip())
+            for item in sroot.iter():
+                if item.tag.split("}")[-1] == "Node":
+                    nodes.append({
+                        "name": item.attrib.get("Name"),
+                        "subsystem_start_time": item.attrib.get("SubsystemStartTime"),
+                        "state_id": item.attrib.get("StateId"),
+                        "total_items_found": int(item.attrib["TotalItemsFound"]) if item.attrib.get("TotalItemsFound", "").isdigit() else None,
+                        "total_items_returned": int(item.attrib["TotalItemsReturned"]) if item.attrib.get("TotalItemsReturned", "").isdigit() else None,
+                    })
+        except ET.ParseError:
+            pass
+        return {"raw": state_text.strip(), "nodes": nodes}
 
     @staticmethod
     def _parse_response(xml_text: str) -> Dict[str, Any]:
-        root = ET.fromstring(xml_text)
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            raise CUCMAXLSoapFaultError(f"RISPort70 returned invalid XML: {exc}") from exc
+
+        for elem in root.iter():
+            if elem.tag.split("}")[-1] == "Fault":
+                fault_str = None
+                for child in elem.iter():
+                    if child.tag.split("}")[-1] == "faultstring" and child.text:
+                        fault_str = child.text.strip()
+                        break
+                raise CUCMAXLSoapFaultError(f"RISPort70 SOAP Fault: {fault_str or 'Unknown SOAP Fault'}")
+
         total_found = 0
+        state_info: Dict[str, Any] = {"raw": None, "nodes": []}
+        node_statuses: List[Dict[str, Any]] = []
         devices: List[Dict[str, Any]] = []
 
         for elem in root.iter():
             tag = elem.tag.split("}")[-1]
             if tag == "TotalDevicesFound" and elem.text and elem.text.strip().isdigit():
                 total_found = int(elem.text.strip())
+            elif tag == "StateInfo" and elem.text:
+                state_info = RisPort70Client._parse_state_info(elem.text)
 
         for node_el in root.iter():
             if node_el.tag.split("}")[-1] != "CmNodes":
                 continue
             for node_item in node_el:
                 node_name = None
+                return_code = None
                 for nc in node_item:
                     nt = nc.tag.split("}")[-1]
                     if nt == "Name" and nc.text:
                         node_name = nc.text.strip()
+                    elif nt == "ReturnCode" and nc.text:
+                        return_code = nc.text.strip()
                     elif nt == "CmDevices":
                         for dev_item in nc:
                             dev = RisPort70Client._parse_device_elem(dev_item, node_name=node_name)
                             if dev and dev.get("name"):
                                 devices.append(dev)
+                if node_name or return_code:
+                    node_statuses.append({"name": node_name, "return_code": return_code})
 
         # Fallback if response uses flat CmDevices without CmNodes wrapper
         if not devices:
@@ -138,6 +222,8 @@ class RisPort70Client:
         return {
             "total_devices_found": total_found or len(devices),
             "devices": devices,
+            "state_info": state_info,
+            "node_statuses": node_statuses,
         }
 
     @staticmethod

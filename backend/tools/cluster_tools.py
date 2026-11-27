@@ -7,14 +7,24 @@ from backend.integrations.cucm_axl.tool_registry import AXLToolRegistry, ToolSpe
 
 
 def register_cluster_tools(registry: AXLToolRegistry, client: Optional[CUCMToolkitAXLClient] = None) -> None:
-    def _client() -> CUCMToolkitAXLClient:
-        return client or CUCMToolkitAXLClient()
+    def _client(params: Dict[str, Any]) -> CUCMToolkitAXLClient:
+        return client or CUCMToolkitAXLClient.from_params(params)
 
     def handle_get_cluster_nodes(params: Dict[str, Any]) -> Dict[str, Any]:
-        c = _client()
+        c = _client(params)
         version = c.axl.get_cucm_version()
-        rows = c.sql.execute_template("cluster_nodes")
-        return {"cucm_version": version, "count": len(rows), "rows": rows}
+        ev = c.sql.execute_template_with_evidence("cluster_nodes")
+        return {
+            "cucm_version": version,
+            "count": ev["count"],
+            "rows": ev["rows"],
+            "template_id": ev["template_id"],
+            "endpoint": ev["endpoint"],
+            "axl_version": ev["axl_version"],
+            "authentication_status": ev["authentication_status"],
+            "query_status": ev["query_status"],
+            "query_outcome": ev["query_outcome"],
+        }
 
     registry.register(
         ToolSpec(

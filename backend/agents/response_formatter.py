@@ -140,14 +140,17 @@ class ResponseFormatter:
         if intent_type == "HYBRID":
             sys_prompt = (
                 "You are a Senior Cisco CUCM & Enterprise AI Assistant. "
-                "Combine the actual retrieved CUCM JSON data with clear technical explanation. "
-                "Clearly separate 'Retrieved CUCM Facts' from 'Technical Explanation / Possible Causes'. "
-                "Never invent device names, counts, or statuses not present in the JSON."
+                "The live CUCM tool has already connected and retrieved the real-time JSON data below. "
+                "Never claim you lack network access. "
+                "Combine the actual retrieved CUCM JSON data with clear technical explanation, "
+                "clearly separating 'Retrieved CUCM Facts' from 'Technical Explanation / Assessment'. "
+                "Never invent device names, counts, or metrics not present in the JSON."
             )
         else:
             sys_prompt = (
-                "You are a Cisco CUCM assistant. Answer the user's question using ONLY the provided JSON tool result. "
-                "Never invent device names, counts, or statuses not present in the JSON. Keep it concise and factual."
+                "You are a Cisco CUCM assistant. The live CUCM tool has already retrieved the real-time JSON data below. "
+                "Never claim you lack network access. Answer using ONLY the provided JSON tool result. "
+                "Never invent device names, counts, or metrics not present in the JSON. Keep it concise and factual."
             )
 
         compact_payload = {k: v for k, v in tool_result.items() if k != "rows"}
@@ -200,6 +203,30 @@ class ResponseFormatter:
 
     @staticmethod
     def _deterministic_answer(tool_name: str, res: Dict[str, Any]) -> str:
+        if tool_name == "cucm_live_cpu_utilization":
+            c = res.get("cpu") or {}
+            return (
+                f"Successfully connected to CUCM {c.get('target_ip', res.get('target', ''))}. "
+                f"Live CPU utilization: {c.get('cpu_utilization_pct')}% "
+                f"(Idle: {c.get('cpu_idle_pct')}%, Status: {c.get('health_status')}, Source: {c.get('source')})."
+            )
+        if tool_name == "cucm_live_system_status":
+            s = res.get("system") or {}
+            return (
+                f"CUCM {s.get('target_ip', '')} ({s.get('hostname', '')}, v{s.get('cucm_version', '')}): "
+                f"CPU={s.get('cpu_utilization_pct')}%, Memory={s.get('memory_utilization_pct')}%, Disk={s.get('disk_utilization_pct')}%."
+            )
+        if tool_name == "cucm_live_services":
+            return (
+                f"CUCM {res.get('target', '')}: {res.get('started_count', 0)} of {res.get('total_services', 0)} services STARTED "
+                f"({res.get('non_started_count', 0)} stopped/other)."
+            )
+        if tool_name == "cucm_live_network_status":
+            n = res.get("network") or {}
+            return f"CUCM {res.get('target', '')} eth0: IP={n.get('ip_address')}, Gateway={n.get('gateway')}, DNS={n.get('dns_primary')}, Link={n.get('link_status')}."
+        if tool_name == "cucm_live_memory_disk":
+            r0 = (res.get("rows") or [{}])[0]
+            return f"CUCM {res.get('target', '')}: Memory={r0.get('memory_utilization_pct')}%, Disk={r0.get('disk_utilization_pct')}%."
         if tool_name == "cucm_list_cti_route_points":
             return f"Your CUCM cluster contains {res.get('count', 0)} configured CTI Route Point(s)."
         if tool_name == "cucm_get_phone_registration":

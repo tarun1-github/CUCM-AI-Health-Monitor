@@ -447,6 +447,38 @@ h1, h2, h3, .brand-title { font-family: 'Manrope', 'Inter', sans-serif; }
   resize: vertical;
 }
 .copy-diag-line { font-size: 0.72rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+.evidence-details {
+  margin-top: 8px;
+  background: rgba(4, 7, 17, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+}
+.evidence-details summary {
+  cursor: pointer;
+  color: #93c5fd;
+  font-weight: 600;
+  font-family: 'Manrope', 'Inter', sans-serif;
+}
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.evidence-pre {
+  background: #02050d;
+  color: #cbd5e1;
+  padding: 8px;
+  border-radius: 6px;
+  max-height: 200px;
+  overflow: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  margin: 8px 0 0;
+}
 
 @media (max-width: 640px) {
   .chat-widget { right: 8px; bottom: 8px; width: calc(100vw - 16px); height: 86vh; }

@@ -33,6 +33,13 @@ class TimingProvenance(BaseModel):
     total_latency_ms: float = 0.0
 
 
+class CUCMExecutionEvidence(BaseModel):
+    target: Dict[str, Any] = Field(default_factory=dict)
+    retrieval: Dict[str, Any] = Field(default_factory=dict)
+    llm: Dict[str, Any] = Field(default_factory=dict)
+    raw_response: Optional[Dict[str, Any]] = None
+
+
 class ChatMessage(BaseModel):
     message_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:10])
     session_id: str = "default"
@@ -42,6 +49,8 @@ class ChatMessage(BaseModel):
     selected_mode: str = "auto"  # auto | general | cucm
     intent_type: str = "CUCM_OPERATION"  # GENERAL_AI | CUCM_OPERATION | HYBRID | CLARIFICATION_REQUIRED
     execution_mode: str = "DETERMINISTIC_FALLBACK"  # GENERAL_AI | LLM_GENERATED | HYBRID | CLARIFICATION_REQUIRED | DETERMINISTIC_FALLBACK | TOOL_ONLY | LLM_FAILED
+    cucm_retrieval_status: str = "NOT_EXECUTED"  # NOT_EXECUTED | DATA_RETRIEVED | QUERY_FAILED | AUTHENTICATION_FAILED | CONNECTION_FAILED
+    llm_generation_status: str = "NOT_STARTED"  # NOT_STARTED | SUCCESS | FAILED | FALLBACK
     execution_notice: str = ""
     tool_used: Optional[str] = None
     source: Optional[str] = None
@@ -50,6 +59,7 @@ class ChatMessage(BaseModel):
     llm: LLMProvenance = Field(default_factory=LLMProvenance)
     tool: ToolProvenance = Field(default_factory=ToolProvenance)
     timing: TimingProvenance = Field(default_factory=TimingProvenance)
+    evidence: Optional[CUCMExecutionEvidence] = None
     table: Optional[Dict[str, Any]] = None
     stages: List[str] = Field(default_factory=list)
     error: Optional[str] = None
