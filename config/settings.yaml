@@ -1,0 +1,76 @@
+app:
+  name: "CUCM AI Health Monitor"
+  version: "1.0.0"
+  description: "AI-powered Cisco CUCM remote health monitoring and diagnostic reporting platform"
+
+# Configurable health classification thresholds.
+# Note: These are operator-configurable thresholds for alerting, not rigid Cisco TAC hard limits.
+thresholds:
+  cpu_utilization:
+    warning: 80.0
+    critical: 90.0
+  memory_utilization:
+    warning: 85.0
+    critical: 95.0
+  disk_utilization:
+    warning: 80.0
+    critical: 90.0
+  load_average_1m:
+    warning: 4.0
+    critical: 8.0
+
+scoring_weights:
+  cpu: 0.20
+  memory: 0.20
+  disk: 0.20
+  services: 0.25
+  network: 0.15
+
+critical_services:
+  - "Cisco CallManager"
+  - "Cisco Tomcat"
+  - "Cisco CTIManager"
+  - "Cisco Tftp"
+  - "A Cisco DB"
+  - "Cisco AXL Web Service"
+  - "Cisco RIS Data Collector"
+  - "Cisco DirSync"
+
+important_services:
+  - "A Cisco DB Replicator"
+  - "Cisco AMC Service"
+  - "Cisco AXL Tomcat"
+  - "Cisco CAR Web Service"
+  - "Cisco CDR Repository Manager"
+  - "Cisco Database Layer Monitor"
+  - "Cisco DRF Master"
+  - "Cisco DRF Local"
+  - "Cisco Serviceability Reporter"
+  - "Cisco Trust Verification Service"
+  - "Cisco UDS Tomcat"
+  - "Service Manager"
+  - "System SSH"
+  - "Cluster Manager"
+
+optional_services:
+  - "Cisco Certificate Enrollment Service"
+  - "Cisco Dialed Number Analyzer"
+  - "Cisco Dialed Number Analyzer Server"
+  - "Cisco Extension Mobility"
+  - "Cisco IP Manager Assistant"
+  - "Cisco WebDialer Web Service"
+  - "Cisco Unified Mobile Voice Access Service"
+  - "Cisco TAPS Service"
+  - "Self Provisioning IVR"
+
+connectivity:
+  prefer_transport: "netmiko"
+  fallback_transport: "paramiko"
+  axl_timeout_seconds: 30
+  max_command_retries: 1
+
+reporting:
+  output_dir: "reports"
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  max_history_entries: 50

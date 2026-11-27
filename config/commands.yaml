@@ -1,0 +1,82 @@
+# Strict read-only CUCM Administrator CLI command allowlist.
+# Never add configuration-changing, service-restarting, or reboot commands here.
+commands:
+  - id: "show_version_active"
+    command: "show version active"
+    category: "system"
+    description: "Active CUCM software version"
+    timeout: 30
+    enabled: true
+    parser: "version"
+
+  - id: "show_status"
+    command: "show status"
+    category: "system"
+    description: "System hostname, uptime, CPU, memory, and disk summary"
+    timeout: 45
+    enabled: true
+    parser: "status"
+
+  - id: "show_hardware"
+    command: "show hardware"
+    category: "system"
+    description: "Hardware platform, CPU count, memory, and disk inventory"
+    timeout: 45
+    enabled: true
+    parser: "hardware"
+
+  - id: "show_network_eth0"
+    command: "show network eth0"
+    category: "network"
+    description: "Primary network interface IP, mask, gateway, DNS, and link status"
+    timeout: 30
+    enabled: true
+    parser: "network_eth0"
+
+  - id: "show_process_load"
+    command: "show process load"
+    category: "cpu_memory"
+    description: "System load averages, CPU states, and memory/swap utilization"
+    timeout: 45
+    enabled: true
+    parser: "process_load"
+
+  - id: "show_diskusage_common"
+    command: "show diskusage common"
+    category: "disk"
+    description: "Common partition disk usage breakdown (disabled by default; times out on large /common, disk metrics collected via show status/show hardware)"
+    timeout: 60
+    enabled: false
+    parser: "diskusage"
+
+  - id: "show_perf_processor"
+    command: "show perf query class Processor"
+    category: "cpu_memory"
+    description: "CUCM perfmon processor utilization counters"
+    timeout: 45
+    enabled: true
+    parser: "perf_processor"
+
+  - id: "show_perf_memory"
+    command: "show perf query class Memory"
+    category: "cpu_memory"
+    description: "CUCM perfmon memory utilization counters"
+    timeout: 45
+    enabled: true
+    parser: "perf_memory"
+
+  - id: "utils_service_list"
+    command: "utils service list"
+    category: "services"
+    description: "CUCM application and platform service statuses"
+    timeout: 60
+    enabled: true
+    parser: "service_list"
+
+  - id: "utils_diagnose_test"
+    command: "utils diagnose test"
+    category: "network"
+    description: "CUCM built-in network, DNS, NTP, and Tomcat diagnostics"
+    timeout: 150
+    enabled: true
+    parser: "diagnose_test"

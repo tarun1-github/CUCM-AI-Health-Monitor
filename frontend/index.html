@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CUCM AI Health Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/dashboard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="ambient-bg"></div>
+
+  <div class="app-shell">
+    <!-- HEADER -->
+    <header class="glass-panel header-bar">
+      <div class="brand-area">
+        <div class="logo-orb">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">CUCM AI Health Monitor</h1>
+          <div class="brand-meta">
+            <span class="env-pill" id="envBadge">ENV: DEVELOPMENT</span>
+            <span class="meta-sep">•</span>
+            <span>Target IP: <strong id="deviceIp">10.197.206.141</strong></span>
+            <span class="meta-sep">•</span>
+            <span>Version: <strong id="headerVersion">UNKNOWN</strong></span>
+            <span class="meta-sep">•</span>
+            <span>Last Check: <strong id="lastTimestamp">Never</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn-3d btn-secondary" id="btnRefresh" onclick="refreshDashboard()">
+          <span class="btn-icon">↻</span> Refresh Dashboard
+        </button>
+        <button class="btn-3d btn-primary" id="btnRunFull" onclick="startFullHealthCheck()">
+          <span class="btn-icon">⚡</span> Run Full Health Check
+        </button>
+      </div>
+    </header>
+
+    <!-- ACTION TOOLBAR -->
+    <section class="glass-panel action-toolbar">
+      <button class="btn-3d btn-cyan" id="btnConnTest" onclick="testConnectivity()">🔌 Connectivity Test</button>
+      <button class="btn-3d btn-indigo" id="btnSysHealth" onclick="runPartialHealthCheck('btnSysHealth', ['show_version_active','show_status','show_hardware','show_process_load','show_perf_processor','show_perf_memory'], 'System Health')">🖥️ System Health</button>
+      <button class="btn-3d btn-violet" id="btnSvcHealth" onclick="runPartialHealthCheck('btnSvcHealth', ['utils_service_list'], 'Service Health')">⚙️ Service Health</button>
+      <button class="btn-3d btn-teal" id="btnNetHealth" onclick="runPartialHealthCheck('btnNetHealth', ['show_network_eth0','utils_diagnose_test'], 'Network Health')">🌐 Network Health</button>
+      <button class="btn-3d btn-purple" id="btnAiSummary" onclick="regenerateAiSummary()">✨ Generate AI Report</button>
+      <div class="toolbar-spacer"></div>
+      <button class="btn-3d btn-emerald" id="btnExportHtml" onclick="exportReport('html')">📄 HTML</button>
+      <button class="btn-3d btn-amber" id="btnExportPdf" onclick="exportReport('pdf')">📑 PDF</button>
+      <button class="btn-3d btn-slate" id="btnExportCsv" onclick="exportReport('csv')">📊 CSV</button>
+      <button class="btn-3d btn-slate" id="btnExportJson" onclick="exportReport('json')">🧾 JSON</button>
+    </section>
+
+    <!-- FULL HEALTH PROGRESS BAR -->
+    <section id="progressPanel" class="glass-panel progress-panel hidden">
+      <div class="progress-top">
+        <div>
+          <strong id="progressTitle">CUCM Full Health Check</strong>
+          <div id="progressActivity" class="muted">Initializing...</div>
+        </div>
+        <div class="progress-right">
+          <span id="progressPct" class="progress-pct">0%</span>
+          <button class="btn-3d btn-slate btn-xs" id="btnCancelTask" onclick="cancelActiveTask()">Cancel</button>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div id="progressFill" class="progress-fill" style="width: 0%;"></div>
+      </div>
+      <div id="progressSteps" class="muted progress-steps">Step 0 of 0</div>
+    </section>
+
+    <!-- STATUS BANNER -->
+    <div id="statusBanner" class="status-banner hidden"></div>
+
+    <!-- TOP 8 KPI METRIC CARDS -->
+    <section class="kpi-grid">
+      <div class="glass-card kpi-card" id="cardOverall">
+        <div class="kpi-top"><span class="kpi-icon">🛡️</span><span class="kpi-label">Overall Health Score</span></div>
+        <div class="kpi-value" id="kpiScoreVal">INSUFFICIENT DATA</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiOverallDot"></span><span id="kpiOverallSub">UNKNOWN • Coverage 0%</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">✅</span><span class="kpi-label">Check Completion</span></div>
+        <div class="kpi-value" id="kpiCompletionVal">0%</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiCompletionDot"></span><span id="kpiCompletionSub">0 / 9 sections</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">🔥</span><span class="kpi-label">CPU Utilization</span></div>
+        <div class="kpi-value" id="kpiCpuVal">--%</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiCpuDot"></span><span id="kpiCpuSub">UNKNOWN</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">🧠</span><span class="kpi-label">Memory Utilization</span></div>
+        <div class="kpi-value" id="kpiMemVal">--%</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiMemDot"></span><span id="kpiMemSub">UNKNOWN</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">💾</span><span class="kpi-label">Disk Utilization</span></div>
+        <div class="kpi-value" id="kpiDiskVal">--%</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiDiskDot"></span><span id="kpiDiskSub">UNKNOWN</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">🧩</span><span class="kpi-label">Running Services</span></div>
+        <div class="kpi-value" id="kpiSvcVal">-- / --</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiSvcDot"></span><span id="kpiSvcSub">UNKNOWN</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">🌐</span><span class="kpi-label">Network Health</span></div>
+        <div class="kpi-value kpi-value-sm" id="kpiNetVal">NOT COLLECTED</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiNetDot"></span><span id="kpiNetSub">SSH &amp; Diagnostics</span></div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-top"><span class="kpi-icon">🏢</span><span class="kpi-label">Cluster Health</span></div>
+        <div class="kpi-value kpi-value-sm" id="kpiClusterVal">NOT COLLECTED</div>
+        <div class="kpi-footer"><span class="health-dot dot-unknown" id="kpiClusterDot"></span><span id="kpiClusterSub">AXL Nodes</span></div>
+      </div>
+    </section>
+
+    <!-- MAIN SECTION A & C: SYSTEM HEALTH + NETWORK HEALTH -->
+    <div class="two-col-grid">
+      <section class="glass-panel">
+        <div class="section-header">
+          <div>
+            <h2>🖥️ System Health</h2>
+            <p class="section-sub" id="sysSectionMeta">Status: NOT COLLECTED</p>
+          </div>
+          <span class="version-pill" id="cucmVersionPill">Version: UNKNOWN</span>
+        </div>
+        <div class="gauges-row">
+          <div class="gauge-wrap"><canvas id="cpuGauge"></canvas><div class="gauge-label">CPU</div></div>
+          <div class="gauge-wrap"><canvas id="memGauge"></canvas><div class="gauge-label">Memory</div></div>
+          <div class="gauge-wrap"><canvas id="diskGauge"></canvas><div class="gauge-label">Disk</div></div>
+        </div>
+        <div class="sys-meta-grid">
+          <div class="meta-item"><span>Hostname</span><strong id="sysHostname">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Uptime</span><strong id="sysUptime">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Hardware</span><strong id="sysHardware">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Load Avg (1m/5m/15m)</span><strong id="sysLoad">UNKNOWN</strong></div>
+        </div>
+      </section>
+
+      <section class="glass-panel">
+        <div class="section-header">
+          <div>
+            <h2>🌐 Network Health</h2>
+            <p class="section-sub" id="netSectionMeta">Status: NOT COLLECTED</p>
+          </div>
+          <span class="badge badge-unknown" id="netHealthBadge">UNKNOWN</span>
+        </div>
+        <div class="sys-meta-grid">
+          <div class="meta-item"><span>Interface</span><strong id="netIface">eth0</strong></div>
+          <div class="meta-item"><span>Link Status</span><strong id="netLink">UNKNOWN</strong></div>
+          <div class="meta-item"><span>IP Address</span><strong id="netIp">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Subnet Mask</span><strong id="netMask">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Default Gateway</span><strong id="netGw">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Primary DNS</span><strong id="netDns">UNKNOWN</strong></div>
+          <div class="meta-item"><span>Secondary DNS</span><strong id="netDns2">Not Configured</strong></div>
+          <div class="meta-item"><span>SSH / AXL</span><strong id="netConn">UNKNOWN</strong></div>
+        </div>
+        <h3 class="sub-heading">Network Diagnostics (<span id="netDiagCounts">0 passed, 0 skipped, 0 failed</span>)</h3>
+        <div id="netDiagList" class="diag-chips"><span class="muted">NOT COLLECTED</span></div>
+      </section>
+    </div>
+
+    <!-- MAIN SECTION D & E: CLUSTER HEALTH + AI EXECUTIVE SUMMARY -->
+    <div class="two-col-grid">
+      <section class="glass-panel">
+        <div class="section-header">
+          <div>
+            <h2>🏢 CUCM Cluster Health</h2>
+            <p class="section-sub" id="clusterSectionMeta">Status: NOT COLLECTED</p>
+          </div>
+          <span class="provider-pill" id="clusterPubPill">Publisher: UNKNOWN</span>
+        </div>
+        <div class="table-wrap">
+          <table class="glass-table">
+            <thead>
+              <tr><th>Node Name</th><th>Role</th><th>Status</th></tr>
+            </thead>
+            <tbody id="clusterTableBody">
+              <tr><td colspan="3" class="muted">NOT COLLECTED</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="glass-panel ai-panel">
+        <div class="section-header">
+          <div>
+            <h2>✨ AI Executive Summary</h2>
+            <p class="section-sub" id="aiSectionMeta">Grounded in collected telemetry</p>
+          </div>
+          <span class="provider-pill" id="aiProviderPill">Provider: deterministic-fallback</span>
+        </div>
+        <div class="ai-box">
+          <h3>Overall Assessment &amp; Score Drivers</h3>
+          <p id="aiOverall">Run a health check to generate an executive assessment.</p>
+          <p id="aiExec" class="muted"></p>
+          <ul id="scoreReasons" class="ai-list"></ul>
+        </div>
+        <div class="ai-grid" style="margin-top: 12px;">
+          <div class="ai-box">
+            <h3>Important Findings</h3>
+            <ul id="aiFindings" class="ai-list"><li class="muted">No findings yet.</li></ul>
+          </div>
+          <div class="ai-box">
+            <h3>Recommended Next Actions</h3>
+            <ul id="aiActions" class="ai-list"><li class="muted">No actions yet.</li></ul>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- MAIN SECTION B: SERVICE HEALTH -->
+    <section class="glass-panel">
+      <div class="section-header">
+        <div>
+          <h2>⚙️ Service Health</h2>
+          <p class="section-sub" id="svcSectionMeta">Status: NOT COLLECTED</p>
+        </div>
+        <input type="text" id="svcSearch" class="search-input" placeholder="Filter services..." oninput="filterServices()" />
+      </div>
+      <div class="table-wrap">
+        <table class="glass-table">
+          <thead>
+            <tr>
+              <th>Service Name</th>
+              <th>Criticality</th>
+              <th>Current Status</th>
+              <th>Health</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody id="servicesTableBody">
+            <tr><td colspan="5" class="muted">NOT COLLECTED</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- MAIN SECTION G: HEALTH TRENDS -->
+    <section class="glass-panel">
+      <div class="section-header">
+        <h2>📈 Health Trends</h2>
+        <span class="muted">Historical CPU, Memory, and Disk utilization</span>
+      </div>
+      <div id="trendsEmptyState" class="empty-state">
+        No historical health snapshots available yet. Run multiple health checks to populate trend charts.
+      </div>
+      <div id="trendsChartWrap" class="trends-wrap hidden">
+        <canvas id="trendsChart"></canvas>
+      </div>
+    </section>
+
+    <!-- MAIN SECTION F: DIAGNOSTIC COMMAND RESULTS -->
+    <section class="glass-panel">
+      <div class="section-header">
+        <h2>💻 Diagnostic Command Results</h2>
+        <span class="muted">Read-only CUCM CLI allowlist execution log</span>
+      </div>
+      <div id="commandsAccordion" class="accordion-list">
+        <div class="empty-state">No diagnostic commands executed yet.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- FLOATING COPILOT-STYLE CUCM AI ASSISTANT -->
+  <button id="chatFab" class="chat-fab" title="Open CUCM AI Assistant" onclick="openChatWidget()">
+    <span class="chat-fab-icon">✦</span>
+    <span class="chat-fab-label">CUCM AI</span>
+    <span id="chatUnreadDot" class="chat-unread hidden"></span>
+  </button>
+
+  <aside id="chatWidget" class="chat-widget hidden" aria-label="CUCM AI Assistant">
+    <div class="chat-widget-header">
+      <div class="chat-widget-title">
+        <span class="chat-avatar">✦</span>
+        <div>
+          <h3>CUCM AI Assistant</h3>
+          <span id="chatSessionLabel" class="chat-session-sub">Session: default</span>
+        </div>
+      </div>
+      <div class="chat-widget-controls">
+        <button class="icon-btn" title="AI Settings" onclick="toggleAiSettings()">⚙️</button>
+        <button class="icon-btn" title="Refresh Provider Status" onclick="refreshAssistantStatus()">↻</button>
+        <button class="icon-btn" title="New Chat" onclick="startNewChat()">＋</button>
+        <button class="icon-btn" id="btnMaxRestore" title="Maximize / Restore" onclick="toggleMaximizeChat()">⤢</button>
+        <button class="icon-btn" title="Minimize" onclick="minimizeChatWidget()">—</button>
+        <button class="icon-btn" title="Close" onclick="closeChatWidget()">✕</button>
+      </div>
+    </div>
+
+    <!-- EXECUTION STATUS BAR -->
+    <div id="chatStatusBanner" class="chat-status-bar">
+      <span id="chatStateBadge" class="badge badge-unknown">CHECKING...</span>
+      <span id="chatStateDetail" class="muted">Checking LLM provider status...</span>
+    </div>
+
+    <!-- AI SETTINGS PANEL -->
+    <div id="chatSettingsPanel" class="chat-settings-panel hidden">
+      <div class="settings-grid">
+        <div><span>Configured Gateway</span><strong id="setProvider">gateway (Gemini → OpenRouter → Ollama)</strong></div>
+        <div><span>Active / Last Model</span><strong id="setModel">N/A</strong></div>
+        <div><span>Primary (Gemini)</span><strong id="setPrimary">gemini-3.1-flash-lite</strong></div>
+        <div><span>Secondary (OpenRouter)</span><strong id="setSecondary">Free model chain</strong></div>
+        <div><span>Final Fallback (Ollama)</span><strong id="setOllamaEndpoint">llama3 @ 10.106.44.12:11434</strong></div>
+        <div><span>Auth Status</span><strong id="setAuth">N/A</strong></div>
+        <div><span>Connection</span><strong id="setConnStatus">Not tested</strong></div>
+        <div><span>Last Inference</span><strong id="setInfStatus">Not tested</strong></div>
+        <div><span>Last Latency</span><strong id="setLatency">-- ms</strong></div>
+        <div><span>Fallback</span><strong id="setFallback">Enabled</strong></div>
+      </div>
+      <div id="setLastError" class="settings-error hidden"></div>
+      <div class="settings-actions">
+        <button class="chip-btn" onclick="testSingleProvider('gemini')">Test Gemini</button>
+        <button class="chip-btn" onclick="testSingleProvider('openrouter')">Test OpenRouter</button>
+        <button class="chip-btn" onclick="testSingleProvider('ollama')">Test Ollama</button>
+        <button class="chip-btn" onclick="runProviderInferenceTest()">Test Complete Gateway</button>
+        <button class="chip-btn" onclick="testConnectivity()">Test CUCM Toolkit</button>
+      </div>
+      <div class="settings-switch">
+        <select id="cfgProviderSelect" class="chat-select">
+          <option value="gateway">gateway (Gemini → OpenRouter → Ollama)</option>
+          <option value="gemini">gemini</option>
+          <option value="openrouter">openrouter</option>
+          <option value="ollama">ollama (10.106.44.12:11434)</option>
+          <option value="none">none (Disabled)</option>
+        </select>
+        <input id="cfgModelInput" class="chat-select" placeholder="Model override (optional)" />
+        <button class="btn-3d btn-primary btn-xs" onclick="applyProviderConfig()">Apply</button>
+      </div>
+    </div>
+
+    <!-- QUICK ACTIONS (TOOL-ONLY) -->
+    <div class="chat-quick-bar">
+      <button class="chip-btn" onclick="askQuickTool('Show me the registration status of all phones.')">📱 Phones</button>
+      <button class="chip-btn" onclick="askQuickTool('Show unregistered phones in the cluster.')">⚠️ Unregistered</button>
+      <button class="chip-btn" onclick="askQuickTool('How many CTI Route Points are configured?')">🔀 CTI RPs</button>
+      <button class="chip-btn" onclick="askQuickTool('Show all SIP Trunks.')">🌐 SIP Trunks</button>
+      <button class="chip-btn" onclick="askQuickTool('Give me Publisher and Subscriber details.')">🏢 Cluster</button>
+      <button class="chip-btn" onclick="askQuickTool('Show me the configured device pools.')">🧩 Pools</button>
+    </div>
+
+    <!-- MESSAGES -->
+    <div id="chatMessages" class="chat-messages-float">
+      <div class="chat-bubble chat-assistant">
+        <div class="chat-meta"><span>CUCM AI Assistant • Ready</span><span class="badge badge-unknown">TOOL-GROUNDED</span></div>
+        <div>Ask natural-language CUCM questions or click a quick action above. Execution mode and provenance are shown on every response.</div>
+      </div>
+    </div>
+
+    <div id="chatStageBar" class="chat-stage hidden"></div>
+
+    <form class="chat-input-row" onsubmit="event.preventDefault(); sendChat();">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Ask CUCM (e.g., How many phones are registered?)..." />
+      <button type="submit" class="btn-3d btn-primary btn-xs" id="btnSendChat">Send</button>
+    </form>
+  </aside>
+
+  <script src="/assets/js/dashboard.js"></script>
+</body>
+</html>

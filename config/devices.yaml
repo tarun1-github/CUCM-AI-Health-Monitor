@@ -1,0 +1,11 @@
+devices:
+  - id: "cucm-primary"
+    name: "CUCM Primary Node"
+    host: "10.197.206.141"
+    role: "Publisher"
+    ssh_port: 22
+    axl_port: 8443
+    enabled: true
+    tags:
+      - "production-lab"
+      - "cucm"

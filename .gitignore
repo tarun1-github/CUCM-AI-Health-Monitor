@@ -1,0 +1,29 @@
+# Environment & Secrets
+.env
+*.pem
+*.key
+known_hosts_local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime data & outputs
+logs/*.log
+data/raw/*.json
+data/processed/*.json
+reports/*.html
+reports/*.pdf
+reports/*.csv
+reports/*.json
+
+# IDE
+.vscode/
+.idea/
