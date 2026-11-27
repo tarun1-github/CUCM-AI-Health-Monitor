@@ -103,6 +103,7 @@ class HealthAnalyzer:
         known_weight = 0.0
         weighted_sum = 0.0
         comp_scores: Dict[str, Optional[float]] = {}
+        invalid_metrics: List[str] = []
 
         for name, status in components.items():
             pts = _STATUS_POINTS.get(status)
@@ -111,17 +112,33 @@ class HealthAnalyzer:
                 w = float(self.weights.get(name, 0.2))
                 known_weight += w
                 weighted_sum += pts * w
+            else:
+                invalid_metrics.append(name)
 
         data_coverage_pct = round((known_weight / total_weight) * 100.0, 1) if total_weight > 0 else 0.0
 
         # Completion percentage across the 9 dashboard sections
+        available_sections: List[str] = []
+        missing_sections: List[str] = []
         if snapshot.sections:
-            done_sections = sum(
-                1 for sec in snapshot.sections.values() if sec.status in ("COLLECTED", "PARTIAL")
-            )
-            completion_pct = round((done_sections / max(len(snapshot.sections), 1)) * 100.0, 1)
+            for sec_name, sec in snapshot.sections.items():
+                if sec.status in ("COLLECTED", "PARTIAL"):
+                    available_sections.append(sec_name)
+                else:
+                    missing_sections.append(sec_name)
+            total_sections = len(snapshot.sections)
+            completed_sections = len(available_sections)
+            completion_pct = round((completed_sections / max(total_sections, 1)) * 100.0, 1)
         else:
-            completion_pct = data_coverage_pct
+            total_sections = 9
+            completed_sections = sum(1 for s in components.values() if s != HealthStatus.UNKNOWN)
+            completion_pct = round((completed_sections / total_sections) * 100.0, 1)
+
+        completion_status = (
+            "COMPLETED" if completed_sections >= total_sections and total_sections > 0
+            else "PARTIAL" if completed_sections > 0
+            else "NOT_STARTED"
+        )
 
         reasons: List[str] = []
         if known_weight == 0.0:
@@ -131,8 +148,15 @@ class HealthAnalyzer:
                 score_label="INSUFFICIENT DATA",
                 data_coverage_pct=0.0,
                 completion_pct=completion_pct,
+                completed_sections=completed_sections,
+                total_sections=total_sections,
+                completion_status=completion_status,
+                available_sections=available_sections,
+                missing_sections=missing_sections,
+                invalid_metrics=invalid_metrics,
                 reasons=reasons,
                 component_scores=comp_scores,
+                weights=dict(self.weights),
             )
 
         health_score = round(weighted_sum / known_weight, 1)
@@ -153,11 +177,18 @@ class HealthAnalyzer:
 
         return HealthScoreBreakdown(
             health_score=health_score,
-            score_label=f"{health_score:.0f}/100",
+            score_label=f"{health_score:.1f}/100" if health_score % 1 else f"{health_score:.0f}/100",
             data_coverage_pct=data_coverage_pct,
             completion_pct=completion_pct,
+            completed_sections=completed_sections,
+            total_sections=total_sections,
+            completion_status=completion_status,
+            available_sections=available_sections,
+            missing_sections=missing_sections,
+            invalid_metrics=invalid_metrics,
             reasons=reasons,
             component_scores=comp_scores,
+            weights=dict(self.weights),
         )
 
     @staticmethod

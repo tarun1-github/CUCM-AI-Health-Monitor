@@ -123,8 +123,15 @@ class HealthScoreBreakdown(BaseModel):
     score_label: str = "INSUFFICIENT DATA"
     data_coverage_pct: float = 0.0
     completion_pct: float = 0.0
+    completed_sections: int = 0
+    total_sections: int = 9
+    completion_status: str = "NOT_STARTED"  # COMPLETED | PARTIAL | NOT_STARTED
+    available_sections: List[str] = Field(default_factory=list)
+    missing_sections: List[str] = Field(default_factory=list)
+    invalid_metrics: List[str] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
     component_scores: Dict[str, Optional[float]] = Field(default_factory=dict)
+    weights: Dict[str, float] = Field(default_factory=dict)
 
 
 class HealthClassification(BaseModel):

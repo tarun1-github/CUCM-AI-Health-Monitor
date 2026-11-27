@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/css/dashboard.css" />
+  <link rel="stylesheet" href="/assets/css/dashboard.css?v=5.2" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -371,6 +371,28 @@
     </form>
   </aside>
 
-  <script src="/assets/js/dashboard.js"></script>
+  <!-- MANUAL COPY FALLBACK MODAL -->
+  <div id="manualCopyModal" class="manual-copy-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="manualCopyTitle">
+    <div class="manual-copy-modal">
+      <div class="chat-widget-header">
+        <h3 id="manualCopyTitle" style="margin:0;font-size:0.98rem;">Clipboard access unavailable – Copy manually</h3>
+        <button type="button" class="icon-btn" onclick="closeManualCopyModal()" aria-label="Close modal">✕</button>
+      </div>
+      <div class="manual-copy-body">
+        <ol class="manual-copy-steps">
+          <li>Click inside the text.</li>
+          <li>Press <code>Ctrl+A</code>.</li>
+          <li>Press <code>Ctrl+C</code>.</li>
+          <li>Paste wherever required.</li>
+        </ol>
+        <textarea id="manualCopyTextarea" class="manual-copy-textarea" readonly></textarea>
+        <div id="manualCopyDiag" class="copy-diag-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="copyToast" class="copy-toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="/assets/js/dashboard.js?v=5.2"></script>
 </body>
 </html>

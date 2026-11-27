@@ -44,6 +44,20 @@ class SnapshotStore:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 snap = HealthSnapshot(**data)
                 self._backfill_sections(snap)
+                # Recompute score/coverage/completion for legacy snapshots missing score breakdown
+                if "score" not in (data.get("classification") or {}) or (
+                    snap.classification.score.health_score is None
+                    and any(
+                        v is not None
+                        for v in (
+                            snap.system.cpu_utilization_pct,
+                            snap.system.memory_utilization_pct,
+                            snap.system.disk_utilization_pct,
+                        )
+                    )
+                ):
+                    from backend.analyzers.health_analyzer import HealthAnalyzer
+                    snap = HealthAnalyzer().analyze(snap, persist=False)
                 self._snapshots.append(snap)
             except Exception:
                 continue

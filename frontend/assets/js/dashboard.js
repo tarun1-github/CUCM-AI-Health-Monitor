@@ -72,16 +72,20 @@ function renderSnapshot(snap) {
   document.getElementById('headerVersion').textContent = sys.cucm_version || 'UNKNOWN';
   document.getElementById('lastTimestamp').textContent = new Date(snap.collected_at).toLocaleString();
 
-  // KPI Cards
+  // KPI Cards (strictly bound to backend HealthScoreBreakdown)
   document.getElementById('kpiScoreVal').textContent = score.score_label || 'INSUFFICIENT DATA';
   document.getElementById('kpiOverallDot').className = dotClass(cls.overall_health);
-  document.getElementById('kpiOverallSub').textContent = `${cls.overall_health || 'UNKNOWN'} • Coverage ${score.data_coverage_pct ?? 0}%`;
+  const covTxt = score.data_coverage_pct != null ? `${score.data_coverage_pct}%` : 'UNKNOWN';
+  document.getElementById('kpiOverallSub').textContent = `${cls.overall_health || 'UNKNOWN'} • Data Coverage ${covTxt}`;
 
-  const compPct = score.completion_pct ?? 0;
-  const doneSec = Object.values(sections).filter(s => s.status === 'COLLECTED' || s.status === 'PARTIAL').length;
+  const compPct = score.completion_pct != null ? score.completion_pct : 0;
+  const doneSec = score.completed_sections != null
+    ? score.completed_sections
+    : Object.values(sections).filter(s => s.status === 'COLLECTED' || s.status === 'PARTIAL').length;
+  const totalSec = score.total_sections || Object.keys(sections).length || 9;
   document.getElementById('kpiCompletionVal').textContent = `${compPct}%`;
   document.getElementById('kpiCompletionDot').className = dotClass(compPct >= 100 ? 'HEALTHY' : compPct > 0 ? 'WARNING' : 'UNKNOWN');
-  document.getElementById('kpiCompletionSub').textContent = `${doneSec} / ${Object.keys(sections).length || 9} sections`;
+  document.getElementById('kpiCompletionSub').textContent = `${doneSec} / ${totalSec} sections (${score.completion_status || 'NOT_STARTED'})`;
 
   document.getElementById('kpiCpuVal').textContent = sys.cpu_utilization_pct != null ? `${sys.cpu_utilization_pct.toFixed(1)}%` : '--%';
   document.getElementById('kpiCpuDot').className = dotClass(cls.cpu_health);
@@ -575,11 +579,196 @@ function appendChatBubble(msg) {
   }
 
   const copyBtn = msg.role === 'assistant'
-    ? `<button class="chip-btn" onclick="navigator.clipboard.writeText(this.closest('.chat-bubble').innerText)">Copy</button>` : '';
+    ? `<button type="button" class="copy-btn" data-action="copy-response" aria-label="Copy response">📋 Copy</button>` : '';
   const badgeHtml = msg.role === 'assistant' ? modeBadge(msg.execution_mode) : '';
-  div.innerHTML = `<div class="chat-meta"><span>${msg.role === 'user' ? 'You' : 'CUCM AI Assistant'} • ${ts} ${badgeHtml}</span>${copyBtn}</div><div>${(msg.content || '').replace(/</g, '&lt;')}</div>${tableHtml}${provHtml}`;
+  div.innerHTML = `<div class="chat-meta"><span>${msg.role === 'user' ? 'You' : 'CUCM AI Assistant'} • ${ts} ${badgeHtml}</span>${copyBtn}</div><div class="chat-content">${(msg.content || '').replace(/</g, '&lt;')}</div>${tableHtml}${provHtml}`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
+}
+
+function showCopyToast(message, isError = false) {
+  const toast = document.getElementById('copyToast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.toggle('toast-error', isError);
+  toast.classList.remove('hidden');
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => toast.classList.add('hidden'), 2400);
+}
+
+function extractCleanResponseText(messageElement) {
+  if (!messageElement) return '';
+  const contentEl = messageElement.querySelector('.chat-content');
+  const mainText = contentEl ? (contentEl.innerText || contentEl.textContent || '').trim() : '';
+
+  const tableEl = messageElement.querySelector('.chat-table-wrap table');
+  if (!tableEl) return mainText;
+
+  const rowLines = [];
+  tableEl.querySelectorAll('tr').forEach((tr) => {
+    const cells = Array.from(tr.querySelectorAll('th, td')).map((c) => (c.innerText || c.textContent || '').trim());
+    if (cells.length) rowLines.push(cells.join('\t'));
+  });
+  return rowLines.length ? `${mainText}\n\n${rowLines.join('\n')}`.trim() : mainText;
+}
+
+function legacyCopyInViewport(text) {
+  const prevFocus = document.activeElement;
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '12px';
+  ta.style.left = '12px';
+  ta.style.width = '2px';
+  ta.style.height = '2px';
+  ta.style.padding = '0';
+  ta.style.border = '0';
+  ta.style.outline = 'none';
+  ta.style.background = 'transparent';
+  ta.style.color = 'transparent';
+  ta.style.opacity = '0.01';
+  ta.style.zIndex = '2000';
+  document.body.appendChild(ta);
+  try {
+    ta.focus({ preventScroll: true });
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    return document.execCommand('copy') === true;
+  } finally {
+    document.body.removeChild(ta);
+    if (prevFocus && typeof prevFocus.focus === 'function') {
+      try { prevFocus.focus({ preventScroll: true }); } catch (_) { }
+    }
+  }
+}
+
+function openManualCopyModal(text, diag, reason) {
+  const modal = document.getElementById('manualCopyModal');
+  const ta = document.getElementById('manualCopyTextarea');
+  const diagEl = document.getElementById('manualCopyDiag');
+  if (!modal || !ta) return;
+  ta.value = text;
+  if (diagEl) {
+    diagEl.textContent = `Diagnostics: secureContext=${diag.isSecureContext}, clipboardAPI=${diag.clipboardApiAvailable}, legacyAttempted=${diag.legacyFallbackAttempted}, legacyResult=${diag.legacyFallbackResult}${reason ? ` (${reason})` : ''}`;
+  }
+  modal.classList.remove('hidden');
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+}
+
+function closeManualCopyModal() {
+  const modal = document.getElementById('manualCopyModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function _applyCopyUiResult(btn, text, copied, diag, failureReason) {
+  if (btn) {
+    clearTimeout(btn._resetTimer);
+    btn.classList.remove('copy-success', 'copy-error');
+    if (copied) {
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('copy-success');
+      btn._resetTimer = setTimeout(() => {
+        btn.textContent = '📋 Copy';
+        btn.classList.remove('copy-success', 'copy-error');
+      }, 2000);
+    } else {
+      btn.textContent = 'Copy manually';
+      btn.classList.add('copy-error');
+    }
+  }
+  if (copied) {
+    showCopyToast('Response copied to clipboard');
+  } else {
+    openManualCopyModal(text, diag, failureReason);
+    showCopyToast(`Clipboard unavailable (${failureReason || 'browser policy'}) — use manual copy`, true);
+  }
+}
+
+function copyAssistantResponse(responseElement, buttonElement = null) {
+  const btn = buttonElement || (responseElement ? responseElement.querySelector('.copy-btn') : null);
+  const text = extractCleanResponseText(responseElement);
+  const diag = {
+    clickReceived: true,
+    messageElementFound: Boolean(responseElement),
+    textLength: text.length,
+    isSecureContext: Boolean(window.isSecureContext),
+    clipboardApiAvailable: Boolean(navigator.clipboard && typeof navigator.clipboard.writeText === 'function'),
+    clipboardApiStatus: 'not_attempted',
+    legacyFallbackAttempted: false,
+    legacyFallbackResult: null,
+    finalStatus: 'failed',
+  };
+
+  if (!text) {
+    diag.finalStatus = 'empty_text';
+    console.info('[CUCM-CopyDiag]', diag);
+    showCopyToast('Nothing to copy.', true);
+    return { success: false, diagnostics: diag };
+  }
+
+  // On HTTP LAN (window.isSecureContext === false), run legacy fallback synchronously inside user click event
+  if (!diag.isSecureContext || !diag.clipboardApiAvailable) {
+    diag.clipboardApiStatus = diag.isSecureContext ? 'unavailable' : 'skipped_insecure_context';
+    diag.legacyFallbackAttempted = true;
+    let ok = false;
+    let errReason = '';
+    try {
+      ok = legacyCopyInViewport(text);
+      diag.legacyFallbackResult = ok;
+      if (!ok) errReason = 'execCommand returned false';
+    } catch (err) {
+      diag.legacyFallbackResult = false;
+      errReason = err && err.message ? err.message : 'execCommand threw';
+    }
+    diag.finalStatus = ok ? 'success_legacy' : 'failed_manual_modal';
+    window.__lastCopyDiag = diag;
+    console.info('[CUCM-CopyDiag]', diag);
+    _applyCopyUiResult(btn, text, ok, diag, errReason);
+    return { success: ok, diagnostics: diag };
+  }
+
+  // Secure context: invoke navigator.clipboard.writeText directly inside click handler
+  diag.clipboardApiStatus = 'attempted';
+  return navigator.clipboard.writeText(text).then(() => {
+    diag.clipboardApiStatus = 'succeeded';
+    diag.finalStatus = 'success_clipboard_api';
+    window.__lastCopyDiag = diag;
+    console.info('[CUCM-CopyDiag]', diag);
+    _applyCopyUiResult(btn, text, true, diag, '');
+    return { success: true, diagnostics: diag };
+  }).catch((err) => {
+    diag.clipboardApiStatus = 'failed';
+    diag.legacyFallbackAttempted = true;
+    let ok = false;
+    let errReason = err && err.message ? err.message : 'Clipboard API denied';
+    try {
+      ok = legacyCopyInViewport(text);
+      diag.legacyFallbackResult = ok;
+    } catch (fbErr) {
+      diag.legacyFallbackResult = false;
+      errReason = fbErr && fbErr.message ? fbErr.message : errReason;
+    }
+    diag.finalStatus = ok ? 'success_legacy_after_api_fail' : 'failed_manual_modal';
+    window.__lastCopyDiag = diag;
+    console.info('[CUCM-CopyDiag]', diag);
+    _applyCopyUiResult(btn, text, ok, diag, errReason);
+    return { success: ok, diagnostics: diag };
+  });
+}
+
+function initChatCopyDelegation() {
+  const box = document.getElementById('chatMessages');
+  if (!box || box.dataset.copyBound === '1') return;
+  box.dataset.copyBound = '1';
+  box.addEventListener('click', (event) => {
+    const btn = event.target.closest('.copy-btn');
+    if (!btn) return;
+    const bubble = btn.closest('.chat-bubble');
+    if (bubble) copyAssistantResponse(bubble, btn);
+  });
 }
 
 function askQuickTool(text) {
@@ -631,4 +820,7 @@ async function startNewChat() {
     '<div class="chat-bubble chat-assistant"><div class="chat-meta"><span>CUCM AI Assistant • New Chat</span></div><div>Started a new conversation session. Ask a CUCM question.</div></div>';
 }
 
-document.addEventListener('DOMContentLoaded', refreshDashboard);
+document.addEventListener('DOMContentLoaded', () => {
+  initChatCopyDelegation();
+  refreshDashboard();
+});
